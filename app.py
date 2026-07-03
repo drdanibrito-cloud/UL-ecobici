@@ -53,53 +53,46 @@ try:
         df_original = obtener_datos_ecobici()
         df = df_original.copy()
 
-    # --- BARRA LATERAL / FILTROS ---
+    # --- BARRA LATERAL IZQUIERDA (WIDGETS Y BÚSQUEDA) ---
     st.sidebar.header("Filtros de Búsqueda")
     
-    # Checkbox solicitado para filtrar si hay o no hay bicis
+    # Checkbox para filtrar si hay o no hay bicis
     solo_con_bicis = st.sidebar.checkbox("Mostrar solo estaciones con bicis disponibles", value=False)
     if solo_con_bicis:
         df = df[df['Bicis_Disponibles'] > 0]
 
-    # --- NUEVO: BUSCADOR POR NOMBRE O CÓDIGO QR ---
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🔍 Localizar Estación")
+    st.sidebar.subheader("🔍 Buscar Cicloestación")
     
-    metodo_busqueda = st.sidebar.radio(
-        "Buscar por:",
-        options=["Nombre", "Código Estación / QR"]
+    # Widget selector donde el usuario puede escribir el nombre directamente
+    opciones_estaciones = ["Seleccionar una estación..."] + sorted(df['Nombre'].unique().tolist())
+    estacion_buscada = st.sidebar.selectbox(
+        "Escribe o selecciona el nombre de la estación:",
+        options=opciones_estaciones
     )
 
-    if metodo_busqueda == "Nombre":
-        opciones = ["Seleccionar..."] + sorted(df['Nombre'].unique().tolist())
-        seleccion = st.sidebar.selectbox("Elige o escribe el nombre:", opciones)
-        estacion_encontrada = df[df['Nombre'] == seleccion] if seleccion != "Seleccionar..." else pd.DataFrame()
-    else:
-        opciones = ["Seleccionar..."] + sorted(df['ID'].unique().tolist(), key=int)
-        seleccion = st.sidebar.selectbox("Elige o escribe el código numérico:", opciones)
-        estacion_encontrada = df[df['ID'] == seleccion] if seleccion != "Seleccionar..." else pd.DataFrame()
-
-    # Variables de control para el mapa dinámico
+    # Variables por defecto para el centrado del mapa
     zoom_actual = 11
     lat_centro = df['Latitud'].mean()
     lon_centro = df['Longitud'].mean()
 
-    # Si se encontró una estación válida en el buscador, mostramos sus métricas numéricas dedicadas
-    if not estacion_encontrada.empty:
-        estacion_info = estacion_encontrada.iloc[0]
+    # Si el usuario selecciona una estación, extraemos su disponibilidad numérica en la barra izquierda
+    if estacion_buscada != "Seleccionar una estación...":
+        datos_estacion = df[df['Nombre'] == estacion_buscada].iloc[0]
         
-        # Ajustar vista del mapa a la estación
-        lat_centro = estacion_info['Latitud']
-        lon_centro = estacion_info['Longitud']
-        zoom_actual = 15
+        # Mover mapa a las coordenadas de la estación buscada
+        lat_centro = datos_estacion['Latitud']
+        lon_centro = datos_estacion['Longitud']
+        zoom_actual = 16  # Zoom cercano enfocado en la estación
         
-        st.sidebar.markdown("### 📊 Estatus de Estación")
-        st.sidebar.metric("🚲 Bicis Disponibles", f"{estacion_info['Bicis_Disponibles']} u.")
-        st.sidebar.metric("🔌 Puertos Libres", f"{estacion_info['Puertos_Libres']} u.")
-        st.sidebar.caption(f"Capacidad total: {estacion_info['Capacidad_Total']} | Porcentaje: {estacion_info['Disponibilidad_%']}%")
+        # Mostrar disponibilidad numérica directamente en la columna izquierda
+        st.sidebar.markdown(f"### 📊 Disponibilidad en:\n**{estacion_buscada}**")
+        st.sidebar.metric("🚲 Bicicletas Disponibles", f"{datos_estacion['Bicis_Disponibles']} u.")
+        st.sidebar.metric("🔌 Puertos Libres", f"{datos_estacion['Puertos_Libres']} u.")
+        st.sidebar.caption(f"Capacidad Total: {datos_estacion['Capacidad_Total']} lugares ({datos_estacion['Disponibilidad_%']}% ocupado)")
         st.sidebar.markdown("---")
 
-    # --- METRICAS GENERALES ---
+    # --- MÉTRICAS PRINCIPALES EN PANTALLA ---
     col1, col2, col3 = st.columns(3)
     col1.metric("Estaciones mostradas", len(df))
     col2.metric("Bicis disponibles", df['Bicis_Disponibles'].sum())
