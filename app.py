@@ -33,7 +33,7 @@ def obtener_datos_ecobici():
         'Puertos_Libres', '¿Operativa?'
     ]
     
-    # Asegurar tipos de datos correctos para evitar errores con Plotly y operaciones matemáticas
+    # Asegurar tipos de datos correctos
     tabla_final['Latitud'] = pd.to_numeric(tabla_final['Latitud'])
     tabla_final['Longitud'] = pd.to_numeric(tabla_final['Longitud'])
     tabla_final['Bicis_Disponibles'] = pd.to_numeric(tabla_final['Bicis_Disponibles']).fillna(0).astype(int)
@@ -41,6 +41,12 @@ def obtener_datos_ecobici():
     tabla_final['Capacidad_Total'] = pd.to_numeric(tabla_final['Capacidad_Total']).fillna(0).astype(int)
     
     tabla_final['¿Operativa?'] = tabla_final['¿Operativa?'].map({1: 'SÍ', 0: 'NO'}).fillna('NO')
+
+    # --- NUEVO: CÁLCULO PORCENTUAL ---
+    # Evitamos división entre cero si una capacidad viene en 0
+    tabla_final['Disponibilidad_%'] = (tabla_final['Bicis_Disponibles'] / tabla_final['Capacidad_Total'].replace(0, 1)) * 100
+    # Redondeamos a un decimal para que se vea limpio en el mapa
+    tabla_final['Disponibilidad_%'] = tabla_final['Disponibilidad_%'].round(1)
 
     return tabla_final
 
@@ -60,20 +66,22 @@ try:
 
     # --- METRICAS ---
     col1, col2, col3 = st.columns(3)
-    # Cambiado a "Estaciones mostradas" para que cambie dinámicamente con el filtro
     col1.metric("Estaciones mostradas", len(df))
     col2.metric("Bicis disponibles", df['Bicis_Disponibles'].sum())
     col3.metric("Puertos libres", df['Puertos_Libres'].sum())
 
-    # --- MAPA ---
+    # --- MAPA MODIFICADO (PALETA SECUENCIAL Y PORCENTAJES) ---
     fig = px.scatter_mapbox(
         df,
         lat="Latitud",
         lon="Longitud",
+        color="Disponibilidad_%",           # Ahora el color se rige por el porcentaje calculado
+        color_continuous_scale="Viridis",  # Paleta secuencial limpia (puedes cambiarla por "Cividis", "Blues", etc.)
+        range_color=[0, 100],              # Fijamos el rango de 0% a 100%
         hover_name="Nombre",
         hover_data={
-            "Bicis_Disponibles": True,
-            "Puertos_Libres": True,
+            "Disponibilidad_%": ":.1f}%",  # Agrega el símbolo de % en el cuadro interactivo
+            "Bicis_Disponibles": True,     # Conservamos las nominales como info secundaria opcional
             "Capacidad_Total": True,
             "Latitud": False,
             "Longitud": False
@@ -81,9 +89,15 @@ try:
         zoom=11,
         height=700
     )
+    
+    # Personalización de las etiquetas de la barra de colores y formato
     fig.update_layout(
         mapbox_style="open-street-map",
-        margin={"r": 0, "t": 0, "l": 0, "b": 0}
+        margin={"r": 0, "t": 0, "l": 0, "b": 0},
+        coloraxis_colorbar=dict(
+            title="Disponibilidad",
+            ticksuffix="%"                # Añade el signo % a las etiquetas de la barra de color lateral
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
 
