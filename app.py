@@ -71,7 +71,7 @@ def calcular_distancia_a_ruta(lat_est, lon_est, ruta_coords):
         return 0.0
     ruta_lats = np.array([r[0] for r in ruta_coords])
     ruta_lons = np.array([r[1] for r in ruta_coords])
-    # Conversión aproximada rápida: 1 grado de latitud/longitud en CDMX ~ 111,000 metros
+    # Conversión aproximada rápida: 1 grado en CDMX ~ 111,000 metros
     distancias = np.sqrt((ruta_lats - lat_est)**2 + (ruta_lons - lon_est)**2) * 111000
     return distancias.min()
 
@@ -86,4 +86,8 @@ try:
     if solo_con_bicis:
         df = df[df['Bicis_Disponibles'] > 0]
         
-    radio_cercania = st.sidebar.slider("Rango de cercanía a la ruta (metros):", min_value=100, max_value=700, value=300, step=5
+    radio_cercania = st.sidebar.slider("Rango de cercanía a la ruta (metros):", min_value=100, max_value=700, value=300, step=50)
+
+    # --- MÉTRICAS PRINCIPALES ---
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Estaciones most
