@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 
 # Configuración inicial de la página
 st.set_page_config(page_title="Ecobici CDMX", layout="wide", page_icon="🚲")
@@ -51,6 +53,28 @@ def obtener_datos_ecobici():
 
     return tabla_final
 
+def obtener_ruta_osrm(lat1, lon1, lat2, lon2):
+    """Obtiene el trazado de la ruta por calles conectando a la API libre de OSRM"""
+    url = f"https://router.project-osrm.org/route/v1/foot/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
+    try:
+        resp = requests.get(url).json()
+        if 'routes' in resp and len(resp['routes']) > 0:
+            coords = resp['routes'][0]['geometry']['coordinates']
+            return [[c[1], c[0]] for c in coords]  # Invierte a [lat, lon] para Plotly
+    except:
+        pass
+    return None
+
+def calcular_distancia_a_ruta(lat_est, lon_est, ruta_coords):
+    """Mide la distancia mínima en metros entre una cicloestación y cualquier punto del trayecto"""
+    if not ruta_coords:
+        return 0.0
+    ruta_lats = np.array([r[0] for r in ruta_coords])
+    ruta_lons = np.array([r[1] for r in ruta_coords])
+    # Conversión aproximada rápida: 1 grado de latitud/longitud en CDMX ~ 111,000 metros
+    distancias = np.sqrt((ruta_lats - lat_est)**2 + (ruta_lons - lon_est)**2) * 111000
+    return distancias.min()
+
 try:
     with st.spinner("Cargando datos en tiempo real..."):
         df_original = obtener_datos_ecobici()
@@ -61,81 +85,5 @@ try:
     solo_con_bicis = st.sidebar.checkbox("Mostrar solo estaciones con bicis disponibles", value=False)
     if solo_con_bicis:
         df = df[df['Bicis_Disponibles'] > 0]
-
-    # --- MÉTRICAS PRINCIPALES ---
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Estaciones mostradas", len(df))
-    col2.metric("Bicis disponibles", df['Bicis_Disponibles'].sum())
-    col3.metric("Puertos libres", df['Puertos_Libres'].sum())
-
-    st.markdown("---")
-
-    # --- SECCIÓN SUPERIOR DEL MAPA: SECTOR DE BÚSQUEDA ---
-    st.subheader("🔍 Busca tu cicloestación")
-    
-    # Lista desplegable con opción de autocompletado por nombre o número de ID
-    opciones_busqueda = ["Escribe el nombre o escanea el código QR (ID de estación)..."] + sorted(df['Busqueda_Label'].tolist())
-    estacion_seleccionada = st.selectbox(
-        "Introduce los datos aquí:",
-        options=opciones_busqueda,
-        label_visibility="collapsed" # Oculta la etiqueta repetitiva para un diseño limpio
-    )
-
-    # Variables predeterminadas para centrar el mapa en la CDMX
-    zoom_actual = 11
-    lat_centro = df['Latitud'].mean()
-    lon_centro = df['Longitud'].mean()
-
-    # Ventana pequeña / contenedor de datos si seleccionan una estación
-    if estacion_seleccionada != "Escribe el nombre o escanea el código QR (ID de estación)...":
-        datos_estacion = df[df['Busqueda_Label'] == estacion_seleccionada].iloc[0]
         
-        # Enfocar coordenadas del mapa
-        lat_centro = datos_estacion['Latitud']
-        lon_centro = datos_estacion['Longitud']
-        zoom_actual = 16
-
-        # Pequeña ventana informativa estilizada
-        st.info(f"""
-        **📍 Estación Seleccionada:** {datos_estacion['Nombre']} (ID / QR: **{datos_estacion['ID']}**)  
-        🚲 **Bicicletas Disponibles:** {datos_estacion['Bicis_Disponibles']} unidades | 🔌 **Puertos Libres:** {datos_estacion['Puertos_Libres']} unidades  
-        📊 **Ocupación:** {datos_estacion['Disponibilidad_%']}% de una capacidad total de {datos_estacion['Capacidad_Total']} espacios.
-        """)
-
-    # --- MAPA ---
-    fig = px.scatter_mapbox(
-        df,
-        lat="Latitud",
-        lon="Longitud",
-        color="Disponibilidad_%",           
-        color_continuous_scale="Viridis",  
-        range_color=[0, 100],              
-        hover_name="Nombre",
-        hover_data={
-            "Disponibilidad_%": ":.1f}%",  
-            "Bicis_Disponibles": True,     
-            "Capacidad_Total": True,
-            "Latitud": False,
-            "Longitud": False
-        },
-        zoom=zoom_actual,
-        center={"lat": lat_centro, "lon": lon_centro},
-        height=650
-    )
-    
-    fig.update_layout(
-        mapbox_style="open-street-map",
-        margin={"r": 0, "t": 0, "l": 0, "b": 0},
-        coloraxis_colorbar=dict(
-            title="Disponibilidad",
-            ticksuffix="%"                
-        )
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- TABLA DE DATOS ---
-    with st.expander("Ver datos en tabla"):
-        st.dataframe(df, use_container_width=True)
-
-except Exception as e:
-    st.error(f"Error al cargar los datos: {e}")
+    radio_cercania = st.sidebar.slider("Rango de cercanía a la ruta (metros):", min_value=100, max_value=700, value=300, step=5
