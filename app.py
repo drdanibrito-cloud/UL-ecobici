@@ -71,7 +71,7 @@ def calcular_distancia_a_ruta(lat_est, lon_est, ruta_coords):
         return 0.0
     ruta_lats = np.array([r[0] for r in ruta_coords])
     ruta_lons = np.array([r[1] for r in ruta_coords])
-    # Conversión aproximada rápida: 1 grado en CDMX ~ 111,000 metros
+    # Conversión aproximada rápida: 1 grado de latitud/longitud en CDMX ~ 111,000 metros
     distancias = np.sqrt((ruta_lats - lat_est)**2 + (ruta_lons - lon_est)**2) * 111000
     return distancias.min()
 
@@ -90,4 +90,107 @@ try:
 
     # --- MÉTRICAS PRINCIPALES ---
     col1, col2, col3 = st.columns(3)
-    col1.metric("Estaciones most
+    col1.metric("Estaciones mostradas", len(df))
+    col2.metric("Bicis disponibles", df['Bicis_Disponibles'].sum())
+    col3.metric("Puertos libres", df['Puertos_Libres'].sum())
+
+    st.markdown("---")
+
+    # --- SECCIÓN SUPERIOR DEL MAPA: TRAZADOR DE RUTAS POR QR / NOMBRE ---
+    st.subheader("🗺️ Trazar Ruta y Ver Disponibilidad Cercana")
+    
+    opciones_busqueda = ["Selecciona una cicloestación..."] + sorted(df['Busqueda_Label'].tolist())
+    
+    c_orig, c_dest = st.columns(2)
+    with c_orig:
+        origen_sel = st.selectbox("🚲 Punto de Origen (QR o Nombre):", options=opciones_busqueda, key="origen_ruta")
+    with c_dest:
+        destino_sel = st.selectbox("🏁 Punto de Destino (QR o Nombre):", options=opciones_busqueda, key="destino_ruta")
+
+    # Inicializar parámetros por defecto del mapa
+    zoom_actual = 11
+    lat_centro = df['Latitud'].mean()
+    lon_centro = df['Longitud'].mean()
+    ruta_linea = None
+
+    # Lógica de cálculo si se seleccionan ambos puntos
+    if origen_sel != "Selecciona una cicloestación..." and destino_sel != "Selecciona una cicloestación...":
+        est_origen = df[df['Busqueda_Label'] == origen_sel].iloc[0]
+        est_destino = df[df['Busqueda_Label'] == destino_sel].iloc[0]
+        
+        with st.spinner("Calculando trayecto óptimo entre estaciones..."):
+            ruta_linea = obtener_ruta_osrm(est_origen['Latitud'], est_origen['Longitud'], est_destino['Latitud'], est_destino['Longitud'])
+        
+        if r_linea := ruta_linea:
+            # Calcular distancias y filtrar el DataFrame de estaciones
+            df['Metros_a_Ruta'] = df.apply(lambda r: calcular_distancia_a_ruta(r['Latitud'], r['Longitud'], r_linea), axis=1)
+            df = df[df['Metros_a_Ruta'] <= radio_cercania]
+            
+            # Ajustar encuadre del mapa al punto de partida
+            lat_centro = est_origen['Latitud']
+            lon_centro = est_origen['Longitud']
+            zoom_actual = 14
+            
+            # Ventana informativa superior corta sobre los puntos críticos seleccionados
+            st.info(f"""
+            **🚲 Estación de Origen ({est_origen['ID']}):** {est_origen['Bicis_Disponibles']} bicis disponibles.  
+            **🔌 Estación de Destino ({est_destino['ID']}):** {est_destino['Puertos_Libres']} puertos libres para entregar.
+            """)
+        else:
+            st.error("No se pudo conectar al servidor de mapas para trazar la línea física del camino.")
+
+    # --- RECONSTRUCCIÓN DEL MAPA INTERACTIVO CON FILTRADO DE RUTA ---
+    # Usamos graph_objects para sobreponer la línea vial encima de los scatter points secuenciales
+    fig = go.Figure()
+
+    # 1. Añadir los marcadores secuenciales de Ecobici
+    if not df.empty:
+        fig.add_trace(go.Scattermapbox(
+            lat=df['Latitud'],
+            lon=df['Longitud'],
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=11,
+                color=df['Disponibilidad_%'],
+                colorscale='Viridis',
+                cmin=0,
+                cmax=100,
+                showscale=True,
+                colorbar=dict(title="Disponibilidad", ticksuffix="%")
+            ),
+            text=df['Nombre'],
+            hovertemplate="<b>%{text}</b><br>" +
+                          "Bicis Disponibles: " + df['Bicis_Disponibles'].astype(str) + "<br>" +
+                          "Puertos Libres: " + df['Puertos_Libres'].astype(str) + "<br>" +
+                          "Ocupación: %{marker.color:.1f}%<extra></extra>"
+        ))
+
+    # 2. Añadir la línea del trayecto si ya fue calculada por OSRM
+    if ruta_linea:
+        fig.add_trace(go.Scattermapbox(
+            lat=[p[0] for p in ruta_linea],
+            lon=[p[1] for p in ruta_linea],
+            mode='lines',
+            line=dict(width=4, color='#FF4500'),  # Línea naranja/roja vibrante para distinguir el camino
+            name='Trayecto vial'
+        ))
+
+    fig.update_layout(
+        mapbox=dict(
+            style="open-street-map",
+            center={"lat": lat_centro, "lon": lon_centro},
+            zoom=zoom_actual
+        ),
+        margin={"r": 0, "t": 0, "l": 0, "b": 0},
+        height=650,
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- TABLA DE DATOS ---
+    with st.expander("Ver datos en tabla"):
+        st.dataframe(df, use_container_width=True)
+
+except Exception as e:
+    st.error(f"Error al cargar los datos: {e}")
