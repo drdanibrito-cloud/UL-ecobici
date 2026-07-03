@@ -70,4 +70,72 @@ try:
 
     st.markdown("---")
 
-    # --- SECCIÓN SUPERIOR DEL MAPA: SECTOR DE BÚSQU
+    # --- SECCIÓN SUPERIOR DEL MAPA: SECTOR DE BÚSQUEDA ---
+    st.subheader("🔍 Busca tu cicloestación")
+    
+    # Lista desplegable con opción de autocompletado por nombre o número de ID
+    opciones_busqueda = ["Escribe el nombre o escanea el código QR (ID de estación)..."] + sorted(df['Busqueda_Label'].tolist())
+    estacion_seleccionada = st.selectbox(
+        "Introduce los datos aquí:",
+        options=opciones_busqueda,
+        label_visibility="collapsed" # Oculta la etiqueta repetitiva para un diseño limpio
+    )
+
+    # Variables predeterminadas para centrar el mapa en la CDMX
+    zoom_actual = 11
+    lat_centro = df['Latitud'].mean()
+    lon_centro = df['Longitud'].mean()
+
+    # Ventana pequeña / contenedor de datos si seleccionan una estación
+    if estacion_seleccionada != "Escribe el nombre o escanea el código QR (ID de estación)...":
+        datos_estacion = df[df['Busqueda_Label'] == estacion_seleccionada].iloc[0]
+        
+        # Enfocar coordenadas del mapa
+        lat_centro = datos_estacion['Latitud']
+        lon_centro = datos_estacion['Longitud']
+        zoom_actual = 16
+
+        # Pequeña ventana informativa estilizada
+        st.info(f"""
+        **📍 Estación Seleccionada:** {datos_estacion['Nombre']} (ID / QR: **{datos_estacion['ID']}**)  
+        🚲 **Bicicletas Disponibles:** {datos_estacion['Bicis_Disponibles']} unidades | 🔌 **Puertos Libres:** {datos_estacion['Puertos_Libres']} unidades  
+        📊 **Ocupación:** {datos_estacion['Disponibilidad_%']}% de una capacidad total de {datos_estacion['Capacidad_Total']} espacios.
+        """)
+
+    # --- MAPA ---
+    fig = px.scatter_mapbox(
+        df,
+        lat="Latitud",
+        lon="Longitud",
+        color="Disponibilidad_%",           
+        color_continuous_scale="Viridis",  
+        range_color=[0, 100],              
+        hover_name="Nombre",
+        hover_data={
+            "Disponibilidad_%": ":.1f}%",  
+            "Bicis_Disponibles": True,     
+            "Capacidad_Total": True,
+            "Latitud": False,
+            "Longitud": False
+        },
+        zoom=zoom_actual,
+        center={"lat": lat_centro, "lon": lon_centro},
+        height=650
+    )
+    
+    fig.update_layout(
+        mapbox_style="open-street-map",
+        margin={"r": 0, "t": 0, "l": 0, "b": 0},
+        coloraxis_colorbar=dict(
+            title="Disponibilidad",
+            ticksuffix="%"                
+        )
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- TABLA DE DATOS ---
+    with st.expander("Ver datos en tabla"):
+        st.dataframe(df, use_container_width=True)
+
+except Exception as e:
+    st.error(f"Error al cargar los datos: {e}")
