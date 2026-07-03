@@ -118,6 +118,26 @@ try:
         est_origen = df[df['Busqueda_Label'] == origen_sel].iloc[0]
         est_destino = df[df['Busqueda_Label'] == destino_sel].iloc[0]
         
+        # --- NUEVO WIDGET: DETALLE NUMÉRICO DE LAS ESTACIONES ELEGIDAS ---
+        st.markdown("### 📊 Disponibilidad en Estaciones Seleccionadas")
+        det_col1, det_col2 = st.columns(2)
+        
+        with det_col1:
+            st.metric(
+                label=f"🚲 Bicis Libres en Origen ({est_origen['Nombre']})", 
+                value=f"{est_origen['Bicis_Disponibles']} u.",
+                delta=f"Capacidad: {est_origen['Capacidad_Total']}",
+                delta_color="off"
+            )
+        with det_col2:
+            st.metric(
+                label=f"🔌 Puertos Libres en Destino ({est_destino['Nombre']})", 
+                value=f"{est_destino['Puertos_Libres']} u.",
+                delta=f"Capacidad: {est_destino['Capacidad_Total']}",
+                delta_color="off"
+            )
+        # -----------------------------------------------------------------
+
         with st.spinner("Calculando trayecto óptimo entre estaciones..."):
             ruta_linea = obtener_ruta_osrm(est_origen['Latitud'], est_origen['Longitud'], est_destino['Latitud'], est_destino['Longitud'])
         
@@ -130,17 +150,10 @@ try:
             lat_centro = est_origen['Latitud']
             lon_centro = est_origen['Longitud']
             zoom_actual = 14
-            
-            # Ventana informativa superior corta sobre los puntos críticos seleccionados
-            st.info(f"""
-            **🚲 Estación de Origen ({est_origen['ID']}):** {est_origen['Bicis_Disponibles']} bicis disponibles.  
-            **🔌 Estación de Destino ({est_destino['ID']}):** {est_destino['Puertos_Libres']} puertos libres para entregar.
-            """)
         else:
             st.error("No se pudo conectar al servidor de mapas para trazar la línea física del camino.")
 
     # --- RECONSTRUCCIÓN DEL MAPA INTERACTIVO CON FILTRADO DE RUTA ---
-    # Usamos graph_objects para sobreponer la línea vial encima de los scatter points secuenciales
     fig = go.Figure()
 
     # 1. Añadir los marcadores secuenciales de Ecobici
